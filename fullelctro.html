@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Electricity Management Chatbot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f4f4f4;
+            padding-top: 50px;
+        }
+        .card {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #target-tracking, #insights, #recommendations {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="text-center mb-0">Electricity Management Chatbot</h2>
+                    </div>
+                    <div class="card-body">
+                        <!-- User Profile Section -->
+                        <form id="user-profile-form">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Name</label>
+                                <input type="text" class="form-control" id="name" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="historical-units" class="form-label">Last Month's Electricity Units</label>
+                                <input type="number" class="form-control" id="historical-units" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="has-ac" class="form-label">Do you have ACs?</label>
+                                <select class="form-select" id="has-ac">
+                                    <option value="no">No</option>
+                                    <option value="yes">Yes</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3" id="ac-count-group" style="display:none;">
+                                <label for="num-ac" class="form-label">Number of ACs</label>
+                                <input type="number" class="form-control" id="num-ac" min="0">
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">Create Profile</button>
+                        </form>
+
+                        <!-- Insights Section -->
+                        <div id="insights" class="mt-4">
+                            <h3>Your Insights</h3>
+                            <div class="card">
+                                <div class="card-body">
+                                    <p id="monthly-usage"></p>
+                                    <p id="monthly-cost"></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recommendations Section -->
+                        <div id="recommendations" class="mt-4">
+                            <h3>Energy Saving Recommendations</h3>
+                            <div class="card">
+                                <ul class="list-group list-group-flush" id="recommendation-list"></ul>
+                            </div>
+                        </div>
+
+                        <!-- Target Tracking Section -->
+                        <div id="target-tracking" class="mt-4">
+                            <h3>Energy Target Tracking</h3>
+                            <form id="target-form">
+                                <div class="mb-3">
+                                    <label for="target-period" class="form-label">Target Period</label>
+                                    <select class="form-select" id="target-period">
+                                        <option value="month">This Month</option>
+                                        <option value="year">This Year</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="budget" class="form-label">Budget (INR)</label>
+                                    <input type="number" class="form-control" id="budget" required>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="next-bill-date" class="form-label">Next Bill Date</label>
+                                    <input type="date" class="form-control" id="next-bill-date">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="current-units" class="form-label">Current Month's Units Used</label>
+                                    <input type="number" class="form-control" id="current-units">
+                                </div>
+
+                                <button type="submit" class="btn btn-success w-100">Track Targets</button>
+                            </form>
+
+                            <div id="target-results" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Tariff data matching the backend
+        const tariffData = {
+            "Kerala": [
+                {slab_start: 0, slab_end: 50, rate_per_unit: 3.15, fixed_charge: 25},
+                {slab_start: 51, slab_end: 100, rate_per_unit: 3.95, fixed_charge: 50},
+                {slab_start: 101, slab_end: 150, rate_per_unit: 5.00, fixed_charge: 75},
+                {slab_start: 151, slab_end: 200, rate_per_unit: 6.35, fixed_charge: 100},
+                {slab_start: 201, slab_end: 250, rate_per_unit: 7.50, fixed_charge: 125},
+                {slab_start: 251, slab_end: 300, rate_per_unit: 8.50, fixed_charge: 150},
+                {slab_start: 301, slab_end: 100000, rate_per_unit: 9.00, fixed_charge: 200},
+            ]
+        };
+
+        // Calculation functions
+        function calculateCost(units, state) {
+            const slabs = tariffData[state];
+            let totalCost = 0;
+            for (let slab of slabs) {
+                if (units > slab.slab_end) {
+                    totalCost += (slab.slab_end - slab.slab_start + 1) * slab.rate_per_unit;
+                } else {
+                    totalCost += (units - slab.slab_start + 1) * slab.rate_per_unit;
+                    break;
+                }
+            }
+            totalCost += slabs[0].fixed_charge;
+            return totalCost;
+        }
+
+        function calculateUnits(budget, state) {
+            const slabs = tariffData[state];
+            let remainingBudget = budget - slabs[0].fixed_charge;
+            let totalUnits = 0;
+            for (let slab of slabs) {
+                const slabUnits = slab.slab_end - slab.slab_start + 1;
+                const slabCost = slabUnits * slab.rate_per_unit;
+                if (remainingBudget >= slabCost) {
+                    totalUnits += slabUnits;
+                    remainingBudget -= slabCost;
+                } else {
+                    totalUnits += remainingBudget / slab.rate_per_unit;
+                    break;
+                }
+            }
+            return totalUnits;
+        }
+
+        // Event Listeners
+        document.getElementById('has-ac').addEventListener('change', function() {
+            const acCountGroup = document.getElementById('ac-count-group');
+            acCountGroup.style.display = this.value === 'yes' ? 'block' : 'none';
+        });
+
+        document.getElementById('user-profile-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const historicalUnits = parseFloat(document.getElementById('historical-units').value);
+            const hasAc = document.getElementById('has-ac').value === 'yes';
+            const numAc = hasAc ? parseInt(document.getElementById('num-ac').value || 0) : 0;
+
+            const historicalCost = calculateCost(historicalUnits, "Kerala");
+            
+            // Insights
+            document.getElementById('monthly-usage').textContent = `Average Monthly Usage: ${historicalUnits} units`;
+            document.getElementById('monthly-cost').textContent = `Average Monthly Cost: ₹${historicalCost.toFixed(2)}`;
+            document.getElementById('insights').style.display = 'block';
+
+            // Recommendations
+            const recommendationList = document.getElementById('recommendation-list');
+            recommendationList.innerHTML = '';
+            
+            if (hasAc) {
+                const acRecommendation = document.createElement('li');
+                acRecommendation.className = 'list-group-item';
+                acRecommendation.textContent = `You have ${numAc} AC(s). Tips: Reduce usage by ${numAc} hours daily.`;
+                recommendationList.appendChild(acRecommendation);
+            }
+
+            if (historicalUnits > 200) {
+                const highUsageRec = document.createElement('li');
+                highUsageRec.className = 'list-group-item';
+                highUsageRec.textContent = 'High energy usage detected. Switch to energy-efficient appliances.';
+                recommendationList.appendChild(highUsageRec);
+            }
+
+            document.getElementById('recommendations').style.display = 'block';
+            document.getElementById('target-tracking').style.display = 'block';
+        });
+
+        document.getElementById('target-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const targetPeriod = document.getElementById('target-period').value;
+            const budget = parseFloat(document.getElementById('budget').value);
+            const nextBillDate = new Date(document.getElementById('next-bill-date').value);
+            const currentUnits = parseFloat(document.getElementById('current-units').value);
+
+            const targetUnits = calculateUnits(budget, "Kerala");
+            const daysRemaining = Math.ceil((nextBillDate - new Date()) / (1000 * 60 * 60 * 24));
+            const dailyUsageRate = targetUnits / daysRemaining;
+            const daysPassed = Math.ceil((new Date() - new Date(new Date().getFullYear(), new Date().getMonth(), 1)) / (1000 * 60 * 60 * 24));
+            const expectedUnits = dailyUsageRate * daysPassed;
+            const remainingUnits = targetUnits - currentUnits;
+            const remainingPercentage = (remainingUnits / targetUnits) * 100;
+
+            const targetResults = document.getElementById('target-results');
+            targetResults.innerHTML = `
+                <div class="card">
+                    <div class="card-body">
+                        <h4>Target Tracking Results</h4>
+                        <p>Total Target Units: ${targetUnits.toFixed(2)}</p>
+                        <p>Daily Usage Rate: ${dailyUsageRate.toFixed(2)} units/day</p>
+                        <p>Remaining Units: ${remainingUnits.toFixed(2)} (${remainingPercentage.toFixed(2)}%)</p>
+                        ${currentUnits > expectedUnits ? 
+                            `<div class="alert alert-warning">
+                                Alert! You've used ${(currentUnits - expectedUnits).toFixed(2)} units more than expected.
+                            </div>` : 
+                            `<div class="alert alert-success">
+                                You're on track! Keep up the good work.
+                            </div>`
+                        }
+                    </div>
+                </div>
+            `;
+        });
+    </script>
+</body>
+</html>
